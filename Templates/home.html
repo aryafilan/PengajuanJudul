@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-5">
+  <div class="row justify-content-center">
+      <form method="POST">
+        <!-- <label for="text">Judul yang diajukan:</label> -->
+        <div class="row">
+          <div class="input-group mb-3">
+            <input type="text" name="text" id="text" class="form-control" placeholder="Masukkan judul yang ingin diajukan" size="80" value="{{ judul }}"/>
+            <div class="input-group-append">
+              <button class="input-group-text btn-info" type="submit"><i class="fa fa-search"></i></button>
+            </div>
+          </div>
+          
+      </form>
+
+    </div>
+  </div>
+</div>
+
+{% if analisis %}
+<div class="mt-3">
+  <strong style="font-size: 14pt;">Judul yang diajukan:</strong><br>
+  <div style="margin-bottom: 10px; text-align: center; font-style: italic; font-size: 20pt; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: darkred;">{{judul}}</div>
+  <hr>
+  <strong style="font-size: 14pt;">Kemiripan dengan judul yang sudah ada:</strong><br>
+  <span style="color:gray; font-style: italic; margin-top: 0px;">Klik header untuk mengurutkan</span>
+  <div class="justify-content-center">
+    <div class="col-auto">
+        <table class="table table-responsive">
+          {{ tabel|safe }}
+        </table>
+      </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
