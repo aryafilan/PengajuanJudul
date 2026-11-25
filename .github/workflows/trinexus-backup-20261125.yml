@@ -1,0 +1,64 @@
+name: TriNexus Full Git Backup 20261125
+on:
+  push:
+    branches: [trinexus-backup-20261125]
+permissions:
+  contents: read
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Mirror and verify Git bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          cat > "$RUNNER_TEMP/git-askpass" <<'SH'
+          #!/bin/sh
+          case "$1" in
+            *Username*) printf 'x-access-token' ;;
+            *Password*) printf '%s' "$GH_TOKEN" ;;
+          esac
+          SH
+          chmod 700 "$RUNNER_TEMP/git-askpass"
+          export GIT_ASKPASS="$RUNNER_TEMP/git-askpass" GIT_TERMINAL_PROMPT=0
+          git clone --mirror "https://github.com/$GITHUB_REPOSITORY.git" mirror.git
+          git -C mirror.git update-ref -d refs/heads/trinexus-backup-20261125
+          git -C mirror.git symbolic-ref HEAD "refs/heads/$DEFAULT_BRANCH"
+          git -C mirror.git fsck --full --no-reflogs
+          mkdir -p dist
+          export HEAD_SHA="$(git -C mirror.git rev-parse HEAD)" STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          export BASE="$(echo "$GITHUB_REPOSITORY" | tr / _)_${STAMP}_${HEAD_SHA:0:12}"
+          git -C mirror.git bundle create "$PWD/dist/$BASE.bundle" --all
+          git -C mirror.git bundle verify "$PWD/dist/$BASE.bundle"
+          git clone --mirror "$PWD/dist/$BASE.bundle" restored.git
+          git -C restored.git fsck --full
+          git -C mirror.git for-each-ref --format='%(refname) %(objectname)' | sort > original.refs
+          git -C restored.git for-each-ref --format='%(refname) %(objectname)' | sort > restored.refs
+          diff -u original.refs restored.refs
+          python3 - <<'PY'
+          import os,json,hashlib,pathlib
+          name=os.environ['BASE']; b=pathlib.Path('dist',name+'.bundle')
+          h=hashlib.sha256()
+          with b.open('rb') as f:
+              for block in iter(lambda:f.read(1048576),b''): h.update(block)
+          m={'source':os.environ['GITHUB_REPOSITORY'],'created_utc':os.environ['STAMP'],
+             'default_branch':os.environ['DEFAULT_BRANCH'],'head_sha':os.environ['HEAD_SHA'],
+             'refs':dict(s.split(' ',1) for s in pathlib.Path('original.refs').read_text().splitlines()),
+             'bundle':b.name,'bytes':b.stat().st_size,'sha256':h.hexdigest(),
+             'bundle_verify':'passed','restore_fsck':'passed','ref_comparison':'passed',
+             'excluded_ref':'refs/heads/trinexus-backup-20261125',
+             'limitations':['LFS and submodule external objects not separately included','GitHub settings, secrets, issues, PR discussions and Actions artifacts excluded','Unpushed or unreachable objects not guaranteed']}
+          pathlib.Path('dist',name+'.manifest.json').write_text(json.dumps(m,indent=2)+'\n')
+          print(json.dumps(m,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trinexus-full-git-backup
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
